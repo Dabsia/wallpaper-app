@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, ScrollView, TextInput } from 'react-native'
+import { View, Text, StyleSheet, Pressable, ScrollView, TextInput, ActivityIndicator } from 'react-native'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather, FontAwesome6, Ionicons } from '@expo/vector-icons'
@@ -8,6 +8,7 @@ import Categories from '../../components/categories'
 import { apiCall } from '../../api'
 import ImageGrid from '../../components/ImageGrid'
 import { debounce } from 'lodash'
+import Filter from '../../components/Filter'
 
 
 const HomeScreen = () => {
@@ -21,6 +22,8 @@ const HomeScreen = () => {
 
     const [search, setSearch] = useState('')
 
+    const [allFilters, setAllFilters] = useState(null)
+
     const clearText = () => {
         setSearch('')
         searchInputRef?.current?.clear()
@@ -32,37 +35,82 @@ const HomeScreen = () => {
         setImages([])
         page = 1
         let params = {
-            page
+            page,
+            ...allFilters
         }
         if (cat) params.category = cat
         fetchImages(params, false)
 
     }
 
+    // Apply and reset filters
+    const applyFilters = () => {
+        if (applyFilters) {
+            page = 1;
+            setImages([])
+            let params = {
+                page, ...allFilters
+            }
+            if (activeCategory) params.category = activeCategory
+            if (search) params.q = search
+            fetchImages(params, false)
+        }
+        closeModal()
+    }
 
+    const resetFilters = () => {
+        if (allFilters) {
+            page = 1
+            setAllFilters(null)
+            setImages([])
+            let params = {
+                page
+            }
+            if (activeCategory) params.category = activeCategory
+            if (search) params.q = search
+            fetchImages(params, false)
+        }
+
+        closeModal()
+    }
+
+    const modalRef = useRef(null)
+
+
+    // Search using the text input
     const handleSearch = text => {
         setSearch(text)
         if (text.length > 2) {
             page = 1
             setImages([])
             setActiveCategory(null) //reset category while searching
-            fetchImages({ page, q: text }, false)
+            fetchImages({ page, q: text, ...allFilters }, false)
         }
         if (text === '') {
             page = 1
             searchInputRef?.current?.clear()
-            setActiveCategory(null) //reset category while searching
+            setActiveCategory(null) //reset  category while searching
             setImages([])
-            fetchImages({ page }, false)
+            fetchImages({ page, ...allFilters }, false)
         }
     }
 
+    // Add debounce functionality
     const handleTextDebounce = useCallback(debounce(handleSearch, 400), [])
 
     // dynamically determine the top of a screen
     const paddingTop = top > 8 ? top + 10 : 30
 
 
+    // Function to open and close the modal
+
+    const openModal = () => {
+        modalRef?.current?.present()
+    }
+
+    const closeModal = () => {
+        modalRef?.current.close()
+    }
 
     // Fetch images
     useEffect(() => {
@@ -83,6 +131,22 @@ const HomeScreen = () => {
         }
     }
 
+    // Clear filters
+    const clearThisFilter = (filterName) => {
+        let filters = { ...allFilters };
+        delete filters[filterName]
+        setAllFilters({ ...filters })
+        page = 1
+        setImages([])
+        let params = {
+            ...filters
+        }
+        if (activeCategory) params.category = activeCategory
+        if (search) params.q = search
+        fetchImages(params, false)
+
+    }
+
 
     return (
         <View style={[styles.container, { paddingTop }]} >
@@ -91,7 +155,7 @@ const HomeScreen = () => {
                 <Pressable>
                     <Text style={styles.title} >Pixels</Text>
                 </Pressable>
-                <Pressable>
+                <Pressable onPress={openModal} >
                     <FontAwesome6 name='bars-staggered' color={themes.colors.neutral(0.7)} size={22} />
                 </Pressable>
             </View>
@@ -111,13 +175,57 @@ const HomeScreen = () => {
                     <Categories handleChangeCategory={handleChangeCategory} activeCategory={activeCategory} />
                 </View>
 
+                {/**Filters */}
+
+                {
+                    allFilters && (
+                        <View>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters} >
+                                {
+                                    Object.keys(allFilters).map((key) => {
+                                        return (
+                                            <View key={key} style={styles.filterItem} >
+                                                {
+                                                    key === 'colors' ?
+                                                        <View style={{ height: 20, width: 30, borderRadius: 7, backgroundColor: allFilters[key] }} >
+
+                                                        </View> :
+                                                        <Text style={styles.filterItemText} >{allFilters[key]}</Text>
+                                                }
+
+                                                <Pressable style={styles.filterCloseIcon} onPress={() => clearThisFilter(key)} >
+                                                    <Ionicons name='close' size={14} color={themes.colors.neutral(0.9)} />
+                                                </Pressable>
+                                            </View>
+                                        )
+                                    })
+                                }
+                            </ScrollView>
+                        </View>
+                    )
+                }
+
                 {/**Image grid */}
                 <View>
                     {
                         images.length > 0 && <ImageGrid images={images} />
                     }
                 </View>
+                {/**Loading state */}
+                <View style={{ marginBottom: 70, marginTop: images.length > 0 ? 10 : 70 }} >
+                    <ActivityIndicator size='large' color={'red'} />
+                </View>
+
             </ScrollView>
+            {/**Filter component */}
+            <Filter
+                allFilters={allFilters}
+                setAllFilters={setAllFilters}
+                modalRef={modalRef}
+                onClose={closeModal}
+                onReset={resetFilters}
+                onApply={applyFilters}
+            />
 
         </View>
     )
@@ -170,6 +278,28 @@ const styles = StyleSheet.create({
         backgroundColor: themes.colors.neutral(0.1),
         padding: 4,
         borderRadius: themes.radius.sm
+    },
+    filters: {
+        paddingHorizontal: wp(4),
+        gap: 10
+    },
+    filterItem: {
+        flexDirection: 'row',
+        backgroundColor: themes.colors.grayBg,
+        padding: 3,
+        borderRadius: themes.radius.xs,
+        gap: 10,
+        paddingHorizontal: 10,
+        alignItems: 'center'
+    },
+    filterItemText: {
+        fontSize: hp(1.8)
+    },
+    filterCloseIcon: {
+        backgroundColor: themes.colors.neutral(0.2),
+        padding: 4,
+        borderRadius: 7
     }
+
 
 })

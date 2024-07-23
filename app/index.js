@@ -7,6 +7,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated'
 import { themes } from '../constants/themes'
 import { useRouter } from 'expo-router'
 
+
 const Welcome = () => {
 
     const router = useRouter()
