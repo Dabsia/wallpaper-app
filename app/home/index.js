@@ -9,6 +9,7 @@ import { apiCall } from '../../api'
 import ImageGrid from '../../components/ImageGrid'
 import { debounce } from 'lodash'
 import Filter from '../../components/Filter'
+import { useRouter } from 'expo-router'
 
 
 const HomeScreen = () => {
@@ -17,12 +18,17 @@ const HomeScreen = () => {
     const [images, setImages] = useState([])
 
     const searchInputRef = useRef(null)
+    const router = useRouter()
 
     const { top } = useSafeAreaInsets()
 
     const [search, setSearch] = useState('')
 
     const [allFilters, setAllFilters] = useState(null)
+
+    const [isEndReached, setIsEndReached] = useState(false)
+
+    let page = 1
 
     const clearText = () => {
         setSearch('')
@@ -76,6 +82,8 @@ const HomeScreen = () => {
 
     const modalRef = useRef(null)
 
+    const scrollRef = useRef(null)
+
 
     // Search using the text input
     const handleSearch = text => {
@@ -117,7 +125,7 @@ const HomeScreen = () => {
         fetchImages()
     }, [])
 
-    const fetchImages = async (params = { page: 1 }, append = false) => {
+    const fetchImages = async (params = { page: 1 }, append = true) => {
         let res = await apiCall(params)
         if (res.success && res?.data?.hits) {
             if (append) {
@@ -147,19 +155,56 @@ const HomeScreen = () => {
 
     }
 
+    const scrollToTop = () => {
+        scrollRef?.current?.scrollTo({
+            y: 0,
+            animated: true
+        })
+    }
+
+    const handleScroll = (e) => {
+        const contentHeight = e.nativeEvent.contentSize.height;
+        const scrollViewHeight = e.nativeEvent.layoutMeasurement.height;
+        const scrollOffset = e.nativeEvent.contentOffset.y
+        const bottomPosition = contentHeight - scrollViewHeight
+
+        if (scrollOffset >= bottomPosition - 1) {
+            setIsEndReached(true)
+            if (!isEndReached) console.log('Reached the end of screen')
+            // Fetch more images
+            ++page;
+            let params = {
+                page, ...allFilters
+            }
+            if (activeCategory) params.category = activeCategory
+            if (search) params.q = search
+            fetchImages(params, true)
+        }
+        else if (isEndReached) {
+            setIsEndReached(false)
+        }
+
+    }
+
+
 
     return (
         <View style={[styles.container, { paddingTop }]} >
             {/**Heeader */}
             <View style={styles.header} >
-                <Pressable>
+                <Pressable onPress={scrollToTop} >
                     <Text style={styles.title} >Pixels</Text>
                 </Pressable>
                 <Pressable onPress={openModal} >
                     <FontAwesome6 name='bars-staggered' color={themes.colors.neutral(0.7)} size={22} />
                 </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ gap: 15 }} >
+            <ScrollView
+                contentContainerStyle={{ gap: 15 }}
+                onScroll={handleScroll}
+                scrollEventThrottle={5} //How often scroll events will fire whe scrolling in ms.
+                ref={scrollRef}
+            >
                 {/**Search bar */}
                 <View style={styles.searchBar} >
                     <View style={styles.searchIcon} >
@@ -208,7 +253,7 @@ const HomeScreen = () => {
                 {/**Image grid */}
                 <View>
                     {
-                        images.length > 0 && <ImageGrid images={images} />
+                        images.length > 0 && <ImageGrid router={router} images={images} />
                     }
                 </View>
                 {/**Loading state */}
